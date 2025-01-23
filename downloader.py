@@ -6,8 +6,6 @@ import json
 import mimetypes
 from urllib.request import urlopen
 
-DOWNLOADS_FOLDER = "/tmp/music"
-
 
 def set_overrides(overrides_file, type_, key, value):
     with open(overrides_file) as overrides:
@@ -81,6 +79,6 @@ if __name__ == "__main__":
 
     title = sys.argv[2] if len(sys.argv) > 2 else None
 
-    file_path = download(url, DOWNLOADS_FOLDER, "channel_overrides.json", title=title)
+    file_path = download(url, "/tmp/music", "channel_overrides.json", title=title)
 
     print(f"downloaded to {file_path}")
