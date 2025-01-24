@@ -1,0 +1,2 @@
+docker build -t music-bot .
+docker run -v ./config:/config --env-file .env music-bot
