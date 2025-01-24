@@ -40,17 +40,23 @@ async def on_message(message):
                 if key == "artist":
                     artist = value
 
-        await message.channel.send(
-            f"downloading {url}, please be patient... \ntitle = {title or '(default)'}\nartist = {artist or '(default)'}"
+        title, artist, thumbnail_url = get_metadata(
+            url,
+            overrides_file="config/channel_overrides.json",
+            title=title,
+            artist=artist,
         )
 
+        await message.channel.send(
+            f"downloading {url}, please be patient... \ntitle = {title}\nartist = {artist}"
+        )
         with tempfile.TemporaryDirectory() as temp_dir:
             downloaded_file = download(
                 url,
                 downloads_folder=temp_dir,
-                overrides_file="channel_overrides.json",
                 title=title,
                 artist=artist,
+                thumbnail_url=thumbnail_url,
             )
             await message.channel.send(file=discord.File(downloaded_file))
 

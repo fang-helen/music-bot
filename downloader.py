@@ -4,6 +4,7 @@ import os
 import subprocess
 import json
 import mimetypes
+import requests
 from urllib.request import urlopen
 
 
@@ -25,30 +26,48 @@ def add_override_by_name(overrides_file, channel_name, name):
     set_overrides(overrides_file, type_="by_name", key=channel_name, value=name)
 
 
-def download(url, downloads_folder, overrides_file, title=None, artist=None):
-    download_dir = f"{downloads_folder}/{url.split("?v=")[1]}"
+def get_metadata(url, overrides_file, title=None, artist=None):
+
+    yt_api = os.getenv("YT_API")
+    print(f"yt api key: {yt_api}")
+
+    metadata = json.loads(subprocess.check_output(["yt-dlp", "-J", url]))
+    channel_id = metadata["channel_id"]
+
+    request_url = f"https://www.googleapis.com/youtube/v3/channels?part=snippet&id={channel_id}&fields=items%2Fsnippet%2Fthumbnails&key={yt_api}"
+
+    response = requests.get(request_url).json()
+    print(f"response: {response}")
+    thumbnails = response["items"][0]["snippet"]["thumbnails"].values()
+    for item in thumbnails:
+        print(item)
+    max_res_thumbnail = sorted(thumbnails, key=lambda x: -1 * x["width"])[0]["url"]
+
     with open(overrides_file) as overrides:
         overrides = json.load(overrides)
 
+    title = title or metadata["title"]
+
+    channel = metadata["channel"]
+    if artist == None:
+        if channel_id in overrides["by_id"]:
+            artist = overrides["by_id"][channel_id]
+        elif channel in overrides["by_name"]:
+            artist = overrides["by_name"][channel_id]
+        else:
+            artist = channel
+
+    return title, artist, max_res_thumbnail
+
+
+def download(url, downloads_folder, title, artist, thumbnail_url):
+    download_dir = f"{downloads_folder}/{url.split("?v=")[1]}"
+
     os.makedirs(download_dir, exist_ok=True)
 
-    filename = title if title else "%(title)s"
     os.system(
-        f"yt-dlp {url} -o '{download_dir}/{filename}.%(ext)s' -x --audio-quality 10 --audio-format mp3"
+        f"yt-dlp {url} -o '{download_dir}/%(title)s.%(ext)s' -x --audio-quality 10 --audio-format mp3"
     )
-
-    metadata = json.loads(subprocess.check_output(["yt-dlp", "-J", url]))
-
-    channel_id = metadata["channel_id"]
-    channel = metadata["channel"]
-    if artist != None:
-        artist = artist
-    elif channel_id in overrides["by_id"]:
-        artist = overrides["by_id"][channel_id]
-    elif channel in overrides["by_name"]:
-        artist = overrides["by_name"][channel_id]
-    else:
-        artist = channel
 
     downloaded_file = f"{download_dir}/{os.listdir(download_dir)[0]}"
     print(f"downloaded to {downloaded_file}")
@@ -56,15 +75,15 @@ def download(url, downloads_folder, overrides_file, title=None, artist=None):
     audiofile = eyed3.load(downloaded_file)
     audiofile.tag.artist = artist
 
-    thumbnail_url = metadata["thumbnail"]
     imagedata = urlopen(thumbnail_url).read()
     mimetype, _encoding = mimetypes.guess_type(thumbnail_url)
+    print(mimetype, thumbnail_url)
     audiofile.tag.images.set(
         type_=3,
         img_data=imagedata,
-        mime_type=mimetype,
+        mime_type=(mimetype or "image/jpeg"),
     )
-    print(f"inferred mimetype: {mimetype} from url: {url}")
+    print(f"inferred mimetype: {mimetype} from image url: {thumbnail_url}")
 
     if title != None:
         audiofile.tag.title = title
@@ -75,10 +94,21 @@ def download(url, downloads_folder, overrides_file, title=None, artist=None):
 
 if __name__ == "__main__":
     url = sys.argv[1]
+    title = sys.argv[2] if len(sys.argv) > 2 else None
     print(f"downloading {url}")
 
-    title = sys.argv[2] if len(sys.argv) > 2 else None
+    title, artist, thumbnail_url = get_metadata(
+        url,
+        overrides_file="config/channel_overrides.json",
+        title=title,
+        artist=None,
+    )
+    downloaded_file = download(
+        url,
+        downloads_folder="/tmp/music",
+        title=title,
+        artist=artist,
+        thumbnail_url=thumbnail_url,
+    )
 
-    file_path = download(url, "/tmp/music", "channel_overrides.json", title=title)
-
-    print(f"downloaded to {file_path}")
+    print(f"downloaded to {downloaded_file}")
